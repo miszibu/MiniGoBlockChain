@@ -25,10 +25,17 @@ func main(){
 	// 创建创始区块 并加入区块链里中
 	initBlockChain()
 	// 挖一个区块，并获得区块奖励
-	mineBlock(txs, sender)
+	mineBlock(sender)
 	// 查询余额
 	fmt.Println(sender,"地址的余额：",getWalletBalance(sender))
+	// 发起一笔交易
 	makeTransaction(sender,recipient,5)
+	// 在挖一个矿
+	mineBlock(sender)
+	// 查询余额
+	fmt.Println(sender,"地址的余额：",getWalletBalance(sender))
+	// 显示unconfirmedpool
+	fmt.Println(txs,len(txs))
 }
 
 // 创建创始区块 并加入区块链里中
@@ -47,13 +54,13 @@ func initBlockChain()  {
 }
 
  // 传入区块链 需记录的转账记录 挖矿
-func mineBlock(txs []blockchain.Transaction,sender string)  {
+func mineBlock(sender string)  {
 	// 创建一个区块奖励交易 奖励10个币
 	sysTX := &blockchain.Transaction{crtpto.RandGeneratorString(INT_MAX),"",sender,10,true}
 	txs = append(txs, *sysTX)
-	// 创建一个区块奖励交易 奖励10个币
-	syssTX := &blockchain.Transaction{crtpto.RandGeneratorString(INT_MAX),"",sender,1,true}
-	txs = append(txs, *syssTX)
+	// 创建一个区块奖励交易 奖励1个币
+	// syssTX := &blockchain.Transaction{crtpto.RandGeneratorString(INT_MAX),"",sender,1,true}
+	//txs = append(txs, *syssTX)
 	// 获取当前区块链的最后一个区块
 	latestBlock :=	BlockChain[cap(BlockChain)-1]
 	var txsString string
@@ -82,8 +89,10 @@ func mineBlock(txs []blockchain.Transaction,sender string)  {
 		Transactions: txs,
 	}
 	BlockChain = append(BlockChain,*newBlock)
+	// 清空unconfirmpool
+	//fmt.Println("挖矿后的区块链",txs,"  ",cap(txs))
+	txs = make([]blockchain.Transaction,0)
 	fmt.Println("挖矿后的区块链",BlockChain)
-	//return BlockChain
 }
 
 // 查询账户余额： 输入一个地址，遍历区块链中的所有交易，返回余额
@@ -92,11 +101,8 @@ func getWalletBalance(address string) float64{
 	for _,block := range BlockChain  {
 		txs := block.Transactions
 		for _,tx := range txs  {
-			if address == tx.Recipient {
+			if address == tx.Recipient && tx.IsValid==true{
 				balance += tx.Amount
-			}
-			if address == tx.Sender {
-				balance -= tx.Amount
 			}
 		}
 	}
@@ -104,10 +110,10 @@ func getWalletBalance(address string) float64{
 }
 
 // 发起一笔交易
-func makeTransaction(sender string, recipient string, amount float64) bool {
-	isSuccess := true
+func makeTransaction(sender string, recipient string, amount float64) {
 	vaildTxs := make([]blockchain.Transaction,0)
 	usedTxs := make([]blockchain.Transaction,0)
+	transferValue := amount
 	//先找到一笔足够交易的钱
 	for _,block := range BlockChain  {
 		txs := block.Transactions
@@ -121,20 +127,47 @@ func makeTransaction(sender string, recipient string, amount float64) bool {
 	// 将需要validTxs 按照Amount值 从小到大排序
 	sort.Sort(txList{vaildTxs})
 	fmt.Println("found valid txs",vaildTxs)
-	//
+	// 先交易零散金额 再交易大额UTXO
+	// 选择validTx 加入 usedTx
 	for _,tx := range  vaildTxs{
-		if  tx.Amount>=amount{
+		if  tx.Amount>=transferValue{
 			usedTxs = append(usedTxs, tx)
+			transferValue -= tx.Amount
 			break
 		}else{
-			amount -= tx.Amount
+			transferValue -= tx.Amount
 			usedTxs = append(usedTxs, tx)
 		}
 	}
-	if amount>0 {
-		return  false
+	if transferValue>0 {
+		fmt.Println("当前账户余额不足 无法完成交易")
+		return
 	}
-	return isSuccess
+	// 创建新的transaction
+	for i,tx := range  usedTxs{
+		// 前n-1个交易
+		if i<cap(usedTxs)-1 {
+			newTX := &blockchain.Transaction{crtpto.RandGeneratorString(INT_MAX),sender,recipient,tx.Amount,true}
+			txs = append(txs, *newTX)
+			amount-=tx.Amount
+		}else { // 最后一个交易
+			newTX := &blockchain.Transaction{crtpto.RandGeneratorString(INT_MAX),sender,recipient,amount,true}
+			txs = append(txs, *newTX)
+			changeTX := &blockchain.Transaction{crtpto.RandGeneratorString(INT_MAX),sender,sender,tx.Amount-amount,true}
+			txs = append(txs, *changeTX)
+		}
+	}
+	// 将使用过的transaction标记已使用
+	for  i:=0;i<len(BlockChain);i++  {
+		txs := BlockChain[i].Transactions
+		for j:=0;j<len(txs);j++{
+			for k:=0;k<len(usedTxs);k++{
+				if txs[j].Id == usedTxs[k].Id {
+					txs[j].IsValid=false
+				}
+			}
+		}
+	}
 }
 
 // 调用 sort.Sort 需要重写三个方法
