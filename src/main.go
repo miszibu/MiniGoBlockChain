@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"MiniGoBlockChain/src/blockchain"
+	"../src/blockchain"
 )
 
 func main()  {
-	blockchain.NewBlockChain("11111")
-	blockchain.block()
+	geneBlock := &blockchain.Transaction{"1","2","3",4.2}
+	fmt.Println(geneBlock)
 	fmt.Println("Zibu's go block chain started")
 }
